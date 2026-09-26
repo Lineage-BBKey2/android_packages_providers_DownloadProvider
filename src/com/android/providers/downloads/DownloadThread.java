@@ -109,6 +109,9 @@ import javax.net.ssl.SSLContext;
  */
 public class DownloadThread extends Thread {
 
+    private static final String BLACKBERRY_KEYBOARD_PACKAGE =
+            "com.blackberry.keyboard";
+
     // TODO: bind each download to a specific network interface to avoid state
     // checking races once we have ConnectivityManager API
 
@@ -404,6 +407,38 @@ public class DownloadThread extends Thread {
         mShutdownRequested = true;
     }
 
+    private String maybeRewriteBlackBerryLanguageUri(String requestUri) {
+        if (!BLACKBERRY_KEYBOARD_PACKAGE.equals(mInfo.mPackage)
+                || !isPackageOwnedByUid(BLACKBERRY_KEYBOARD_PACKAGE, mInfo.mUid)) {
+            return requestUri;
+        }
+
+        final String rewrittenUri =
+                BlackBerryLanguagePackRedirects.maybeRewrite(requestUri);
+
+        if (!requestUri.equals(rewrittenUri)) {
+            Log.i(TAG, "Redirecting BlackBerry Keyboard language pack to "
+                    + Uri.parse(rewrittenUri).getHost());
+        }
+
+        return rewrittenUri;
+    }
+
+    private boolean isPackageOwnedByUid(String packageName, int uid) {
+        final String[] packages =
+                mContext.getPackageManager().getPackagesForUid(uid);
+        if (packages == null) {
+            return false;
+        }
+
+        for (String candidate : packages) {
+            if (packageName.equals(candidate)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Fully execute a single download request. Setup and send the request,
      * handle the response, and transfer the data to the destination file.
@@ -414,7 +449,7 @@ public class DownloadThread extends Thread {
         URL url;
         try {
             // TODO: migrate URL sanity checking into client side of API
-            url = new URL(mInfoDelta.mUri);
+            url = new URL(maybeRewriteBlackBerryLanguageUri(mInfoDelta.mUri));
         } catch (MalformedURLException e) {
             throw new StopRequestException(STATUS_BAD_REQUEST, e);
         }
